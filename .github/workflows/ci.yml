@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  preflight:
+    name: Preflight (Phase 0.5 guardrails)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout (with tags)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify phase0 tag exists
+        run: |
+          set -euo pipefail
+          if git rev-parse -q --verify "refs/tags/phase0" >/dev/null 2>&1; then
+            echo "✅ phase0 tag exists: $(git rev-list -n 1 phase0)"
+          else
+            echo "❌ phase0 tag NOT found"
+            exit 1
+          fi
+
+      - name: Run local preflight (read-only)
+        run: |
+          set -euo pipefail
+          bash scripts/preflight.sh
+
+      - name: Guardrails (Phase 0.5 forbids code/project changes)
+        if: ${{ github.event_name == 'pull_request' }}
+        run: |
+          set -euo pipefail
+
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_requestd.sha }}"
+
+          echo "Base: $BASE_SHA"
+          echo "Head: $HEAD_SHA"
+          echo "Changed files:"
+          git diff --name-only "$BASE_SHA" "$HEAD_SHA" | sed 's/^/  - /' || true
+
+          # Forbidden paths/types during Phase 0.5 (docs/scripts only)
+          # If you later decide Phase 0.5 allows some of these, loosen here.
+          PATTERN='(^App/|^Core/|^Features/|\.swift$|\.metal$|\.xcodeproj/|\.xcworkspace/|^Package\.swift$|\.plist$|\.entitlements$|\.pbxproj$|^project\.xcodeproj/)'
+
+          if git diff --name-only "$BASE_SHA" "$HEAD_SHA" | grep -E "$PATTERN" >/dev/null 2>&1; then
+            echo "❌ Forbidden changes detected for Phase 0.5 (code/project files)."
+            echo "   Phase 0.5 should only touch docs/ scripts/ README and repo meta."
+          echo "   If you truly intend to start feature work, do it in Phase 1."
+            exit 1
+          fi
+
+          echo "✅ Guardrails check passed (no code/project file changes)."
