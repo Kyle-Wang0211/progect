@@ -83,6 +83,25 @@
 
 ---
 
+## Preflight
+
+在 commit 前必须运行一次本地检查：
+
+```bash
+bash scripts/preflight.sh
+```
+
+检查项包括：
+- Git 工作区状态
+- 当前分支和最近提交
+- Phase 0 tag 存在性
+- Swift/Metal 文件中的 TODO/FIXME/XXX
+- 空文件或仅注释文件
+
+脚本为只读检查，不会修改任何文件或执行 git 命令。
+
+---
+
 ## Phase 进入与退出
 
 ### Phase 0
@@ -112,3 +131,4 @@
 - *.xcodeproj/project.pbxproj
 - Package.swift
 - Info.plist / Entitlements
+
