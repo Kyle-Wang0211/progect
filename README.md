@@ -9,6 +9,16 @@ Aether3D 是一个基于 **Gaussian Splatting** 的 3D 资产生成与可视化�
 
 ## 当前阶段
 
+- Phase 0: Frozen Baseline（tag: `phase0`，只读）
+- Phase 0.5: Guardrails（制度护栏，当前阶段）
+
+## 开发硬性约束
+- 禁止直接 push 到 `main`
+- 禁止 force push 到 `main`
+- 所有破坏性变更必须使用 `git revert`（不得 reset/rebase）
+- `main` 历史只允许向前追加
+
+
 - **Phase 0**：Frozen Baseline  
   - Tag：`phase0`
   - 状态：只读（架构基线已冻结）
@@ -66,7 +76,10 @@ git checkout -b phase1/<topic>
 	•	开发完成后通过 Pull Request 合并
 	•	合并后删除功能分支（本地 + 远端）
 
+
 文档索引
 	•	Phase 定义与边界：docs/PHASES.md
 	•	工作流与合并规范：docs/WORKFLOW.md
 	•	回滚与事故处理：docs/ROLLBACK.md
+
+
