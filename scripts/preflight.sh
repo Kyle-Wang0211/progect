@@ -1,103 +1,143 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # Preflight Check Script
 # Phase 0.5-3: Local checks before commit
-# Read-only checks: does NOT modify files.
+# This script performs read-only checks and does not modify any files.
 
 set -euo pipefail
 
-# Colors
-RED=$'\033[0;31m'
-GREEN=$'\033[0;32m'
-YELLOW=$'\033[0;33m'
-BLUE=$'\033[0;34m'
-NC=$'\033[0m'
-
-hr() { echo "------------------------------------------"; }
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
 
 echo "=========================================="
-echo "  Preflight Check (Phase 0.5-3)"
+echo "  Preflight Check"
 echo "=========================================="
-echo
+echo ""
 
-# 1) Git Status (warn only)
-echo -e "${BLUE}1. Git Status${NC}"
-hr
-if [[ -n "$(git status --porcelain 2>/dev/null || true)" ]]; then
-  echo -e "${YELLOW}⚠️  Working tree is not clean:${NC}"
-  git status --short 2>/dev/null || true
+# Check 1: Git Status
+echo -e "${BLUE}1. Git Status Check${NC}"
+echo "----------------------------------------"
+if [ -n "$(git status --porcelain 2>/dev/null || true)" ]; then
+    echo -e "${YELLOW}⚠️  Warning: Working directory is not clean${NC}"
+    echo "Changes:"
+    git status --short 2>/dev/null || true
 else
-  echo -e "${GREEN}✅ Working tree clean${NC}"
+    echo -e "${GREEN}✅ Working directory is clean${NC}"
 fi
-echo
+echo ""
 
-# 2) Branch & recent commits
-echo -e "${BLUE}2. Branch & Recent Commits${NC}"
-hr
-CURRENT_BRANCH="$(git branch --show-current 2>/dev/null || echo 'detached')"
-echo "Current branch: ${CURRENT_BRANCH}"
-git log --oneline -n 5 2>/dev/null || true
-echo
+# Check 2: Branch and Commit Info
+echo -e "${BLUE}2. Branch and Commit Information${NC}"
+echo "----------------------------------------"
+CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || echo "detached HEAD")
+echo "Current branch: $CURRENT_BRANCH"
+echo ""
+echo "Recent 5 commits:"
+git log --oneline -n 5 2>/dev/null || echo "No commits found"
+echo ""
 
-# 3) Phase 0 tag check
-echo -e "${BLUE}3. Phase 0 Tag${NC}"
-hr
-if git rev-parse -q --verify "refs/tags/phase0" >/dev/null 2>&1; then
-  echo -e "${GREEN}✅ Tag 'phase0' exists${NC}"
-  echo "phase0 commit -> $(git rev-list -n 1 phase0)"
+# Check 3: Phase 0 Tag
+echo -e "${BLUE}3. Phase 0 Tag Check${NC}"
+echo "----------------------------------------"
+if git tag --list 2>/dev/null | grep -q '^phase0$'; then
+    echo -e "${GREEN}✅ Tag 'phase0' exists${NC}"
+    PHASE0_COMMIT=$(git rev-parse phase0 2>/dev/null || echo "N/A")
+    echo "  Commit: $PHASE0_COMMIT"
 else
-  echo -e "${RED}❌ Tag 'phase0' NOT found${NC}"
-  exit 1
+    echo -e "${YELLOW}⚠️  Tag 'phase0' not found${NC}"
 fi
-echo
+echo ""
 
-# 4) TODO/FIXME/XXX scan (warn only)
-echo -e "${BLUE}4. TODO/FIXME/XXX Check (Swift/Metal)${NC}"
-hr
-found=0
-dirs=(App Core Features)
-for d in "${dirs[@]}"; do
-  [[ -d "$d" ]] || continue
-  while IFS= read -r -d '' file; do
-    matches="$(grep -nE 'TODO|FIXME|XXX' "$file" 2>/dev/null || true)"
-    if [[ -n "$matches" ]]; then
-      echo "$file:"
-      echo "$matches" | sed 's/^/  /'
-      found=1
+# Check 4: TODO/FIXME/XXX in Swift/Metal files
+echo -e "${BLUE}4. TODO/FIXME/XXX Check${NC}"
+echo "----------------------------------------"
+TODOS_FOUND=0
+for dir in App Core Features; do
+    if [ -d "$dir" ]; then
+        while IFS= read -r file; do
+            if [ -f "$file" ]; then
+                matches=$(grep -n -E "TODO|FIXME|XXX" "$file" 2>/dev/null || true)
+                if [ -n "$matches" ]; then
+                    echo "$file:"
+                    echo "$matches" | sed 's/^/  /'
+                    TODOS_FOUND=$((TODOS_FOUND + 1))
+                fi
+            fi
+        done < <(find "$dir" -type f \( -name "*.swift" -o -name "*.metal" \) 2>/dev/null || true)
     fi
-  done < <(find "$d" -type f \( -name '*.swift' -o -name '*.metal' \) -print0 2>/dev/null || true)
 done
-if [[ $found -eq 0 ]]; then
-  echo -e "${GREEN}✅ No TODO/FIXME/XXX found${NC}"
+
+if [ $TODOS_FOUND -eq 0 ]; then
+    echo -e "${GREEN}✅ No TODO/FIXME/XXX found${NC}"
 else
-  echo -e "${YELLOW}⚠️  TODO/FIXME/XXX found (review before PR)${NC}"
+    echo -e "${YELLOW}⚠️  Found $TODOS_FOUND file(s) with TODO/FIXME/XXX${NC}"
 fi
-echo
+echo ""
 
-# 5) Empty files check (warn  -e "${BLUE}5. Empty Files Check${NC}"
-hr
-empty=0
-scan_dirs=(docs scripts)
-for d in "${scan_dirs[@]}"; do
-  [[ -d "$d" ]] || continue
-  while IFS= read -r -d '' file; do
-    # ignore common junk
-    [[ "$file" == *".DS_Store"* ]] && continue
-    [[ "$file" == *"Assets.xcassets"* ]] && continue
-    [[ "$file" == *".git"* ]] && continue
+# Check 5: Empty or Comment-Only Files
+echo -e "${BLUE}5. Empty or Comment-Only Files Check${NC}"
+echo "----------------------------------------"
+EMPTY_FILES=0
+COMMENT_ONLY_FILES=0
 
-    if [[ ! -s "$file" ]]; then
-      echo "Empty file: $file"
-      empty=1
+for dir in App Core Features docs scripts; do
+    if [ -d "$dir" ]; then
+        while IFS= read -r file; do
+            if [ -f "$file" ]; then
+                # Skip .git, Assets.xcassets, build artifacts
+                if [[ "$file" == *".git"* ]] || [[ "$file" == *"Assets.xcassets"* ]] || [[ "$file" == *"build"* ]] || [[ "$file" == *"DerivedData"* ]] || [[ "$file" == *".DS_Store"* ]]; then
+                    continue
+                fi
+                
+                # Check if file is empty (size = 0)
+                if [ ! -s "$file" ]; then
+                    echo "  Empty file: $file"
+                    EMPTY_FILES=$((EMPTY_FILES + 1))
+                    continue
+                fi
+                
+                # Check if file contains only comments/whitespace
+                # For code files, check if only comments/whitespace remain
+                if [[ "$file" == *.swift ]] || [[ "$file" == *.metal ]] || [[ "$file" == *.sh ]] || [[ "$file" == *.md ]]; then
+                    # Remove comments and blank lines, check if anything remains
+                    non_comment_lines=$(grep -v '^[[:space:]]*//' "$file" 2>/dev/null | \
+                        grep -v '^[[:space:]]*#' | \
+                        grep -v '^[[:space:]]*$' | \
+                        grep -v '^[[:space:]]*/\*' | \
+                        grep -v '^[[:space:]]*\*/' | \
+                        grep -v '^\*' | \
+                        grep -v '^[[:space:]]*<!--' | \
+                        grep -v '^[[:space:]]*-->' || true)
+                    if [ -z "$non_comment_lines" ]; then
+                        echo "  Comment-only file: $file"
+                        COMMENT_ONLY_FILES=$((COMMENT_ONLY_FILES + 1))
+                    fi
+                fi
+            fi
+        done < <(find "$dir" -type f 2>/dev/null || true)
     fi
-  done < <(find "$d" -type f -print0 2>/dev/null || true)
 done
-if [[ $empty -eq 0 ]]; then
-  echo -e "${GREEN}✅ No empty files found${NC}"
-else
-  echo -e "${YELLOW}⚠️  Empty files found (confirm intentional)${NC}"
-fi
-echo
 
+if [ $EMPTY_FILES -eq 0 ] && [ $COMMENT_ONLY_FILES -eq 0 ]; then
+    echo -e "${GREEN}✅ No empty or comment-only files found${NC}"
+else
+    if [ $EMPTY_FILES -gt 0 ]; then
+        echo -e "${YELLOW}⚠️  Found $EMPTY_FILES empty file(s)${NC}"
+    fi
+    if [ $COMMENT_ONLY_FILES -gt 0 ]; then
+        echo -e "${YELLOW}⚠️  Found $COMMENT_ONLY_FILES comment-only file(s)${NC}"
+    fi
+fi
+echo ""
+
+# Summary
 echo "=========================================="
-echo "  Preflight Complete (read-only)"
+echo "  Preflight Check Complete"
 echo "=========================================="
+echo ""
+echo "Note: This script performs read-only checks."
+echo "It does not modify any files or execute git commands."
+
