@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-struct ContentView: View {
+struct DemoContentView: View {
     var body: some View {
         NavigationView {
             VStack(spacing: 20) {
@@ -35,5 +35,5 @@ struct ContentView: View {
 }
 
 #Preview {
-    ContentView()
+    DemoContentView()
 }
