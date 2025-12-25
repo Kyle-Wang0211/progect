@@ -10,6 +10,7 @@ import SwiftUI
 import AVFoundation
 import PhotosUI
 import UniformTypeIdentifiers
+import Combine
 
 @MainActor
 final class PipelineDemoViewModel: ObservableObject {
